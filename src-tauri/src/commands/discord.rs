@@ -212,3 +212,126 @@ pub async fn clear_discord_logs(
     logs.clear();
     Ok(())
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelStats {
+    pub channel_id: String,
+    pub guild_id: String,
+    pub is_listening: bool,
+    pub shared_chat: bool,
+    pub listen_udin: bool,
+    pub message_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuildStats {
+    pub guild_id: String,
+    pub chat_model: String,
+    pub system_prompt_preview: String,
+    pub channels: Vec<ChannelStats>,
+    pub total_messages: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscordStats {
+    pub guilds: Vec<GuildStats>,
+    pub total_channels: usize,
+    pub total_messages: usize,
+}
+
+#[tauri::command]
+pub async fn get_discord_stats() -> Result<DiscordStats, String> {
+    // Get all channel configs
+    let channel_configs = discord::db::get_all_channel_configs()?;
+    let guild_configs = discord::db::get_all_guild_configs()?;
+    
+    // Build guild map
+    let mut guild_map: std::collections::HashMap<String, GuildStats> = std::collections::HashMap::new();
+    
+    // Initialize guilds from guild_configs
+    for gc in &guild_configs {
+        let prompt_preview = if gc.system_prompt.len() > 50 {
+            format!("{}...", &gc.system_prompt[..50])
+        } else {
+            gc.system_prompt.clone()
+        };
+        
+        guild_map.insert(gc.guild_id.clone(), GuildStats {
+            guild_id: gc.guild_id.clone(),
+            chat_model: gc.chat_model.clone(),
+            system_prompt_preview: prompt_preview,
+            channels: Vec::new(),
+            total_messages: 0,
+        });
+    }
+    
+    // Add channels and message counts
+    let mut total_messages = 0;
+    for cc in channel_configs {
+        let msg_count = discord::db::get_message_count(&cc.channel_id).unwrap_or(0);
+        total_messages += msg_count;
+        
+        let channel_stat = ChannelStats {
+            channel_id: cc.channel_id.clone(),
+            guild_id: cc.guild_id.clone(),
+            is_listening: cc.is_listening,
+            shared_chat: cc.shared_chat,
+            listen_udin: cc.listen_udin,
+            message_count: msg_count,
+        };
+        
+        // Add to guild or create new guild entry
+        if let Some(guild) = guild_map.get_mut(&cc.guild_id) {
+            guild.total_messages += msg_count;
+            guild.channels.push(channel_stat);
+        } else {
+            guild_map.insert(cc.guild_id.clone(), GuildStats {
+                guild_id: cc.guild_id.clone(),
+                chat_model: "gemini-2.0-flash".to_string(),
+                system_prompt_preview: "Default".to_string(),
+                channels: vec![channel_stat],
+                total_messages: msg_count,
+            });
+        }
+    }
+    
+    let guilds: Vec<GuildStats> = guild_map.into_values().collect();
+    let total_channels = guilds.iter().map(|g| g.channels.len()).sum();
+    
+    Ok(DiscordStats {
+        guilds,
+        total_channels,
+        total_messages,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MessageEntry {
+    pub role: String,
+    pub author_name: Option<String>,
+    pub content: String,
+}
+
+#[tauri::command]
+pub async fn get_channel_messages(channel_id: String, limit: Option<usize>) -> Result<Vec<MessageEntry>, String> {
+    let messages = discord::db::get_chat_history(&channel_id, None, limit.unwrap_or(50))?;
+    
+    Ok(messages.into_iter().map(|m| MessageEntry {
+        role: m.role,
+        author_name: m.author_name,
+        content: m.content,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn clear_channel_messages(channel_id: String) -> Result<(), String> {
+    let db_path = discord::db::get_db_path()?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "DELETE FROM messages WHERE channel_id = ?",
+        [&channel_id],
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}

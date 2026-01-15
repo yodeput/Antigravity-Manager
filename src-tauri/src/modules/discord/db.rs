@@ -237,3 +237,68 @@ pub fn clear_chat_history(guild_id: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Get all channel configs from the database
+pub fn get_all_channel_configs() -> Result<Vec<ChannelConfig>, String> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT channel_id, guild_id, is_listening, shared_chat, listen_udin FROM channel_configs"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(ChannelConfig {
+            channel_id: row.get(0)?,
+            guild_id: row.get(1)?,
+            is_listening: row.get(2)?,
+            shared_chat: row.get(3)?,
+            listen_udin: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut configs = Vec::new();
+    for row in rows {
+        configs.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(configs)
+}
+
+/// Get message count for a specific channel
+pub fn get_message_count(channel_id: &str) -> Result<usize, String> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE channel_id = ?",
+        [channel_id],
+        |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+
+    Ok(count as usize)
+}
+
+/// Get all guild configs from the database
+pub fn get_all_guild_configs() -> Result<Vec<GuildConfig>, String> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT guild_id, chat_model, image_model, system_prompt FROM guild_configs"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(GuildConfig {
+            guild_id: row.get(0)?,
+            chat_model: row.get(1)?,
+            image_model: row.get(2)?,
+            system_prompt: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut configs = Vec::new();
+    for row in rows {
+        configs.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(configs)
+}

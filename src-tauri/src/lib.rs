@@ -177,6 +177,9 @@ pub fn run() {
             commands::discord::get_discord_bot_status,
             commands::discord::get_discord_logs,
             commands::discord::clear_discord_logs,
+            commands::discord::get_discord_stats,
+            commands::discord::get_channel_messages,
+            commands::discord::clear_channel_messages,
             // Log Command
             commands::get_app_logs,
         ])
