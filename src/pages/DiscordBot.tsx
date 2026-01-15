@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useConfigStore } from '../stores/useConfigStore';
@@ -46,7 +45,6 @@ interface MessageEntry {
 }
 
 export default function DiscordBot() {
-    const { t } = useTranslation();
     const { config, loadConfig, saveConfig } = useConfigStore();
     const [status, setStatus] = useState<DiscordBotStatus>({ running: false, enabled: false });
     const [logs, setLogs] = useState<DiscordLogEntry[]>([]);
@@ -57,6 +55,9 @@ export default function DiscordBot() {
     const [showMessages, setShowMessages] = useState<{channelId: string; messages: MessageEntry[]} | null>(null);
     const [token, setToken] = useState('');
     const [showToken, setShowToken] = useState(false);
+    const [spotifyClientId, setSpotifyClientId] = useState('');
+    const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
+    const [showSpotifySecret, setShowSpotifySecret] = useState(false);
     const [collapsedGuilds, setCollapsedGuilds] = useState<Set<string>>(new Set());
     const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -88,7 +89,9 @@ export default function DiscordBot() {
 
     useEffect(() => {
         if (config?.discord_bot) {
-            setToken(config.discord_bot.bot_token);
+            setToken(config.discord_bot.bot_token || '');
+            setSpotifyClientId(config.discord_bot.spotify_client_id || '');
+            setSpotifyClientSecret(config.discord_bot.spotify_client_secret || '');
         }
     }, [config]);
 
@@ -153,7 +156,9 @@ export default function DiscordBot() {
                 ...config,
                 discord_bot: {
                     enabled: true,
-                    bot_token: token
+                    bot_token: token,
+                    spotify_client_id: spotifyClientId,
+                    spotify_client_secret: spotifyClientSecret,
                 }
             };
             await saveConfig(newConfig);
@@ -318,11 +323,48 @@ export default function DiscordBot() {
                             <p className="text-xs text-gray-500">
                                 Get your bot token from the <a href="https://discord.com/developers/applications" target="_blank" className="text-indigo-500 hover:underline">Discord Developer Portal</a>
                             </p>
+                        </div>
+                        
+                        {/* Spotify Configuration */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-base-300">
+                            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                🎵 Spotify Integration
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <input
+                                    type="text"
+                                    value={spotifyClientId}
+                                    onChange={(e) => setSpotifyClientId(e.target.value)}
+                                    placeholder="Spotify Client ID"
+                                    className="input input-bordered w-full text-sm"
+                                />
+                                <div className="relative">
+                                    <input
+                                        type={showSpotifySecret ? "text" : "password"}
+                                        value={spotifyClientSecret}
+                                        onChange={(e) => setSpotifyClientSecret(e.target.value)}
+                                        placeholder="Spotify Client Secret"
+                                        className="input input-bordered w-full text-sm pr-10"
+                                    />
+                                    <button 
+                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                        onClick={() => setShowSpotifySecret(!showSpotifySecret)}
+                                    >
+                                        {showSpotifySecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">
+                                Get credentials from <a href="https://developer.spotify.com/dashboard" target="_blank" className="text-indigo-500 hover:underline">Spotify Developer Dashboard</a>
+                            </p>
+                        </div>
+                        
+                        <div className="flex justify-end mt-4">
                             <button 
                                 className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-500/30"
                                 onClick={handleSaveConfig}
                             >
-                                Save
+                                Save Configuration
                             </button>
                         </div>
                     </div>

@@ -29,6 +29,10 @@ pub struct AppConfig {
 pub struct DiscordBotConfig {
     pub enabled: bool,
     pub bot_token: String,
+    #[serde(default)]
+    pub spotify_client_id: String,
+    #[serde(default)]
+    pub spotify_client_secret: String,
 }
 
 impl Default for DiscordBotConfig {
@@ -36,6 +40,8 @@ impl Default for DiscordBotConfig {
         Self {
             enabled: false,
             bot_token: "".to_string(),
+            spotify_client_id: "".to_string(),
+            spotify_client_secret: "".to_string(),
         }
     }
 }

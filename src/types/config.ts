@@ -66,6 +66,13 @@ export interface ExperimentalConfig {
     enable_usage_scaling: boolean;
 }
 
+export interface DiscordBotConfig {
+    enabled: boolean;
+    bot_token: string;
+    spotify_client_id?: string;
+    spotify_client_secret?: string;
+}
+
 export interface AppConfig {
     language: string;
     theme: string;
@@ -83,5 +90,6 @@ export interface AppConfig {
     scheduled_warmup: ScheduledWarmupConfig;
     quota_protection: QuotaProtectionConfig; // [NEW] 配额保护配置
     proxy: ProxyConfig;
+    discord_bot?: DiscordBotConfig;
 }
 

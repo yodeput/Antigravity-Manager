@@ -99,8 +99,17 @@ pub async fn start_discord_bot(
     };
 
     let token = config.bot_token.clone();
+    let spotify_client_id = config.spotify_client_id.clone();
+    let spotify_client_secret = config.spotify_client_secret.clone();
     let app_handle_clone = app_handle.clone();
     let logs_clone = state.logs.clone();
+    
+    // Log Spotify config status
+    if !spotify_client_id.is_empty() && !spotify_client_secret.is_empty() {
+        add_log(&state, "info", "🎵 Spotify integration enabled", Some(&app_handle)).await;
+    } else {
+        add_log(&state, "warn", "⚠️  Spotify credentials not configured", Some(&app_handle)).await;
+    }
     
     add_log(&state, "info", "🔌 Connecting to Discord Gateway...", Some(&app_handle)).await;
     
@@ -143,7 +152,13 @@ pub async fn start_discord_bot(
             let _ = app_handle_clone.emit("discord-log", entry);
         }
         
-        if let Err(e) = discord::start_bot(token, proxy_state_cloned, app_handle_clone.clone()).await {
+        if let Err(e) = discord::start_bot(
+            token,
+            proxy_state_cloned,
+            app_handle_clone.clone(),
+            spotify_client_id,
+            spotify_client_secret,
+        ).await {
             error!("Discord Bot crashed: {}", e);
             let entry = DiscordLogEntry {
                 timestamp: get_timestamp(),

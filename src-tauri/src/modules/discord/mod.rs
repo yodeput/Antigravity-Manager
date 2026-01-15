@@ -1,6 +1,7 @@
 pub mod db;
 pub mod commands;
 pub mod events;
+pub mod spotify;
 
 use poise::serenity_prelude as serenity;
 use crate::commands::proxy::ProxyServiceState;
@@ -11,6 +12,10 @@ pub struct Data {
     pub proxy_state: ProxyServiceState,
     pub app_handle: AppHandle,
     pub mention_cache: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, GuildCache>>>,
+    // Spotify integration
+    pub spotify_client_id: String,
+    pub spotify_client_secret: String,
+    pub spotify_token_cache: spotify::SpotifyTokenCache,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -31,8 +36,12 @@ pub async fn start_bot(
     token: String,
     proxy_state: ProxyServiceState,
     app_handle: AppHandle,
+    spotify_client_id: String,
+    spotify_client_secret: String,
 ) -> Result<(), Error> {
     let intents = serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
+
+    let spotify_token_cache = spotify::new_token_cache();
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -45,13 +54,19 @@ pub async fn start_bot(
             },
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
+        .setup(move |ctx, _ready, framework| {
+            let spotify_client_id = spotify_client_id.clone();
+            let spotify_client_secret = spotify_client_secret.clone();
+            let spotify_token_cache = spotify_token_cache.clone();
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     proxy_state,
                     app_handle,
                     mention_cache: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+                    spotify_client_id,
+                    spotify_client_secret,
+                    spotify_token_cache,
                 })
             })
         })

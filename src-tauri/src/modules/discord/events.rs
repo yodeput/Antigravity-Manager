@@ -77,6 +77,99 @@ pub async fn event_handler(
             }
         }
 
+        // 2c. Spotify Music Search: Detect music-related queries
+        // Pattern: "cari lagu/playlist/artis <query> [din]"
+        let music_re = regex::Regex::new(
+            r"(?i)^(cari|putar|play|search|find|cariin|kasih)\s+(playlist|lagu|musik|song|artist|artis|album|music)\s+(.+?)(?:\s+(?:din|dong|bro|bang|deh|ya|yuk))?$"
+        ).unwrap();
+        
+        if let Some(cap) = music_re.captures(&new_message.content) {
+            let search_type_hint = cap.get(2).map(|m| m.as_str().to_lowercase());
+            let query = cap.get(3).map(|m| m.as_str().trim()).unwrap_or("");
+            
+            if !query.is_empty() && query.len() > 1 {
+                // Check if Spotify is configured
+                if data.spotify_client_id.is_empty() || data.spotify_client_secret.is_empty() {
+                    new_message.reply(&ctx.http, "❌ Spotify belum dikonfigurasi. Silakan masukkan Client ID dan Client Secret di Settings.").await?;
+                    return Ok(());
+                }
+                
+                use crate::modules::discord::spotify;
+                let _ = new_message.channel_id.broadcast_typing(&ctx.http).await;
+                
+                // Get access token
+                let access_token = match spotify::get_access_token(
+                    &data.spotify_client_id,
+                    &data.spotify_client_secret,
+                    &data.spotify_token_cache,
+                ).await {
+                    Ok(token) => token,
+                    Err(e) => {
+                        new_message.reply(&ctx.http, format!("❌ Spotify auth failed: {}", e)).await?;
+                        return Ok(());
+                    }
+                };
+                
+                // Determine search type
+                let is_playlist = search_type_hint.as_ref().map(|h| h.contains("playlist")).unwrap_or(false);
+                let is_artist = search_type_hint.as_ref().map(|h| h.contains("artist") || h.contains("artis")).unwrap_or(false);
+                
+                if is_playlist {
+                    match spotify::search_playlists(query, 3, &access_token).await {
+                        Ok(playlists) if !playlists.is_empty() => {
+                            let mut desc = format!("🎵 **Hasil Pencarian Playlist: \"{}\"**\n\n", query);
+                            for (i, p) in playlists.iter().enumerate() {
+                                desc.push_str(&format!("**{}. {}**\n👤 {} • {} lagu\n🔗 {}\n\n", i+1, p.name, p.owner, p.track_count, p.spotify_url));
+                            }
+                            let embed = serenity::CreateEmbed::new().description(&desc).color(0x1DB954);
+                            new_message.channel_id.send_message(&ctx.http, serenity::CreateMessage::new().embed(embed)).await?;
+                        },
+                        Ok(_) => { new_message.reply(&ctx.http, format!("❌ Tidak menemukan playlist untuk \"{}\"", query)).await?; },
+                        Err(e) => { new_message.reply(&ctx.http, format!("❌ Gagal mencari: {}", e)).await?; }
+                    }
+                } else if is_artist {
+                    match spotify::search_artists(query, 3, &access_token).await {
+                        Ok(artists) if !artists.is_empty() => {
+                            let mut desc = format!("🎤 **Hasil Pencarian Artis: \"{}\"**\n\n", query);
+                            for (i, a) in artists.iter().enumerate() {
+                                desc.push_str(&format!("**{}. {}**\n👥 {} followers\n🔗 {}\n\n", i+1, a.name, a.followers, a.spotify_url));
+                            }
+                            let embed = serenity::CreateEmbed::new().description(&desc).color(0x1DB954);
+                            new_message.channel_id.send_message(&ctx.http, serenity::CreateMessage::new().embed(embed)).await?;
+                        },
+                        Ok(_) => { new_message.reply(&ctx.http, format!("❌ Tidak menemukan artis untuk \"{}\"", query)).await?; },
+                        Err(e) => { new_message.reply(&ctx.http, format!("❌ Gagal mencari: {}", e)).await?; }
+                    }
+                } else {
+                    // Default: Search tracks
+                    match spotify::search_tracks(query, 3, &access_token).await {
+                        Ok(tracks) if !tracks.is_empty() => {
+                            let mut desc = format!("🎵 **Hasil Pencarian: \"{}\"**\n\n", query);
+                            for (i, t) in tracks.iter().enumerate() {
+                                let year = t.album_year.as_ref().map(|y| format!(" • {}", y)).unwrap_or_default();
+                                desc.push_str(&format!("**{}. {}** - {}\n💿 {}{}\n🔗 {}\n\n", i+1, t.name, t.artists.join(", "), t.album, year, t.spotify_url));
+                            }
+                            let embed = serenity::CreateEmbed::new().description(&desc).color(0x1DB954)
+                                .thumbnail(tracks.first().and_then(|t| t.album_image.as_ref()).map(|s| s.as_str()).unwrap_or(""));
+                            
+                            // Build buttons
+                            let mut rows = Vec::new();
+                            for (i, t) in tracks.iter().take(3).enumerate() {
+                                rows.push(serenity::CreateActionRow::Buttons(vec![
+                                    serenity::CreateButton::new(format!("spotify_copy_{}", i)).label(format!("📋 Copy #{}", i+1)).style(serenity::ButtonStyle::Secondary),
+                                    serenity::CreateButton::new(format!("spotify_play_{}|{}", i, t.spotify_url)).label(format!("▶️ Play #{}", i+1)).style(serenity::ButtonStyle::Primary),
+                                ]));
+                            }
+                            new_message.channel_id.send_message(&ctx.http, serenity::CreateMessage::new().embed(embed).components(rows)).await?;
+                        },
+                        Ok(_) => { new_message.reply(&ctx.http, format!("❌ Tidak menemukan lagu untuk \"{}\"", query)).await?; },
+                        Err(e) => { new_message.reply(&ctx.http, format!("❌ Gagal mencari: {}", e)).await?; }
+                    }
+                }
+                return Ok(()); // Always return after Spotify handling
+            }
+        }
+
         // 2a. Handle Attachments (Pre-processing)
         // We need to modify new_message.content IF there are text attachments we want to read.
         // For Images, we'll handle them when constructing the AI payload.
@@ -616,6 +709,52 @@ pub async fn event_handler(
             }
         } else {
             new_message.reply(&ctx.http, "❌ The AI service is currently unavailable. Please try again later.").await?;
+      }
+    }
+
+    // Handle Button Interactions (Spotify Copy/Play)
+    if let serenity::FullEvent::InteractionCreate { interaction } = event {
+        if let serenity::Interaction::Component(component) = interaction {
+            let custom_id = &component.data.custom_id;
+            
+            // Handle Spotify Play button: "spotify_play_{index}|{url}"
+            if custom_id.starts_with("spotify_play_") {
+                if let Some(url) = custom_id.split('|').nth(1) {
+                    let play_command = format!("m!p {}", url);
+                    component.channel_id.send_message(&ctx.http, serenity::CreateMessage::new().content(&play_command)).await?;
+                    component.create_response(&ctx.http, serenity::CreateInteractionResponse::Message(
+                        serenity::CreateInteractionResponseMessage::new().content(format!("▶️ Playing: {}", url)).ephemeral(true)
+                    )).await?;
+                }
+                return Ok(());
+            }
+            
+            // Handle Spotify Copy button: "spotify_copy_{index}"
+            if custom_id.starts_with("spotify_copy_") {
+                if let Some(index_str) = custom_id.strip_prefix("spotify_copy_") {
+                    if let Ok(index) = index_str.parse::<usize>() {
+                        let message = &component.message;
+                        if let Some(embed) = message.embeds.first() {
+                            if let Some(desc) = &embed.description {
+                                let url_re = regex::Regex::new(r"https://open\.spotify\.com/[^\s\n]+").unwrap();
+                                let urls: Vec<_> = url_re.find_iter(desc).collect();
+                                if let Some(url_match) = urls.get(index) {
+                                    component.create_response(&ctx.http, serenity::CreateInteractionResponse::Message(
+                                        serenity::CreateInteractionResponseMessage::new()
+                                            .content(format!("📋 **URL:**\n```\n{}\n```", url_match.as_str()))
+                                            .ephemeral(true)
+                                    )).await?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+                component.create_response(&ctx.http, serenity::CreateInteractionResponse::Message(
+                    serenity::CreateInteractionResponseMessage::new().content("❌ Could not extract URL").ephemeral(true)
+                )).await?;
+                return Ok(());
+            }
         }
     }
 
