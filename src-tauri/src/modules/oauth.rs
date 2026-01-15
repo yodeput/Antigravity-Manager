@@ -8,6 +8,9 @@ const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 
+/// OOB redirect URI - Google displays the auth code on screen for manual copy
+pub const OOB_REDIRECT_URI: &str = "http://localhost:1451/oauth-callback";
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
@@ -47,6 +50,11 @@ impl UserInfo {
     }
 }
 
+
+/// Generate OOB OAuth URL (for Discord copy-paste flow)
+pub fn get_oob_auth_url() -> String {
+    get_auth_url(OOB_REDIRECT_URI)
+}
 
 /// 生成 OAuth 授权 URL
 pub fn get_auth_url(redirect_uri: &str) -> String {

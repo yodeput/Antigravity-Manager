@@ -13,6 +13,7 @@ pub mod proxy_db;
 pub mod device;
 pub mod update_checker;
 pub mod scheduler;
+pub mod discord;
 
 use crate::models;
 

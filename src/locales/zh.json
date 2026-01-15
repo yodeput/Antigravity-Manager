@@ -37,6 +37,7 @@
         "dashboard": "仪表盘",
         "accounts": "账号管理",
         "proxy": "API 反代",
+        "discord": "Discord 机器人",
         "settings": "设置",
         "theme_to_dark": "切换到深色模式",
         "theme_to_light": "切换到浅色模式",
@@ -668,6 +669,24 @@
             "clear_title": "清除监控日志",
             "clear_msg": "确定要清除所有监控记录吗？此操作无法撤销。"
         }
+    },
+    "discord": {
+        "title": "Discord 机器人",
+        "desc": "管理 Discord 机器人集成。机器人可以监听频道并使用您的 AI 账号进行回复。",
+        "config": "配置",
+        "enabled": "启用",
+        "token": "Bot Token",
+        "token_placeholder": "在此粘贴 Discord Bot Token",
+        "token_tooltip": "请从 Discord Developer Portal 获取",
+        "status": "状态",
+        "running": "运行中",
+        "stopped": "已停止",
+        "logs": "控制台日志",
+        "refresh_logs": "刷新日志",
+        "save": "保存并重启",
+        "saved": "配置已保存",
+        "start": "启动机器人",
+        "stop": "停止机器人"
     },
     "update_notification": {
         "title": "发现新版本",

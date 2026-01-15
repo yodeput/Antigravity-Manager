@@ -7,6 +7,8 @@ use tauri::{Emitter, Manager};
 pub mod proxy;
 // 导出 autostart 命令
 pub mod autostart;
+// 导出 discord 命令
+pub mod discord;
 
 /// 列出所有账号
 #[tauri::command]
@@ -752,4 +754,10 @@ pub async fn warm_up_all_accounts() -> Result<String, String> {
 #[tauri::command]
 pub async fn warm_up_account(account_id: String) -> Result<String, String> {
     modules::quota::warm_up_account(&account_id).await
+}
+
+/// 获取应用日志
+#[tauri::command]
+pub async fn get_app_logs(limit: usize) -> Result<Vec<String>, String> {
+    modules::logger::get_recent_logs(limit)
 }

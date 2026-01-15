@@ -454,6 +454,7 @@ impl TokenManager {
     /// 参数 `force_rotate` 为 true 时将忽略锁定，强制切换账号
     /// 参数 `session_id` 用于跨请求维持会话粘性
     /// 参数 `target_model` 用于检查配额保护 (Issue #621)
+    /// 参数 `max_tier` 可选，限制最大订阅等级 (如 "FREE" 只使用 FREE 账号)
     pub async fn get_token(
         &self, 
         quota_group: &str, 
@@ -461,9 +462,21 @@ impl TokenManager {
         session_id: Option<&str>,
         target_model: &str,
     ) -> Result<(String, String, String), String> {
+        self.get_token_with_tier(quota_group, force_rotate, session_id, target_model, None).await
+    }
+
+    /// 带 tier 限制的 get_token 版本
+    pub async fn get_token_with_tier(
+        &self, 
+        quota_group: &str, 
+        force_rotate: bool, 
+        session_id: Option<&str>,
+        target_model: &str,
+        max_tier: Option<&str>,
+    ) -> Result<(String, String, String), String> {
         // 【优化 Issue #284】添加 5 秒超时，防止死锁
         let timeout_duration = std::time::Duration::from_secs(5);
-        match tokio::time::timeout(timeout_duration, self.get_token_internal(quota_group, force_rotate, session_id, target_model)).await {
+        match tokio::time::timeout(timeout_duration, self.get_token_internal(quota_group, force_rotate, session_id, target_model, max_tier)).await {
             Ok(result) => result,
             Err(_) => Err("Token acquisition timeout (5s) - system too busy or deadlock detected".to_string()),
         }
@@ -476,11 +489,30 @@ impl TokenManager {
         force_rotate: bool, 
         session_id: Option<&str>,
         target_model: &str,
+        max_tier: Option<&str>,
     ) -> Result<(String, String, String), String> {
         let mut tokens_snapshot: Vec<ProxyToken> = self.tokens.iter().map(|e| e.value().clone()).collect();
         let total = tokens_snapshot.len();
         if total == 0 {
             return Err("Token pool is empty".to_string());
+        }
+
+        // 【新增】按 max_tier 过滤账号（如果指定）
+        if let Some(tier_limit) = max_tier {
+            let tier_map = |tier: &str| match tier {
+                "FREE" => 2,
+                "PRO" => 1,
+                "ULTRA" => 0,
+                _ => 3,
+            };
+            let limit_priority = tier_map(tier_limit);
+            tokens_snapshot.retain(|t| {
+                let account_tier = t.subscription_tier.as_deref().unwrap_or("FREE");
+                tier_map(account_tier) >= limit_priority
+            });
+            if tokens_snapshot.is_empty() {
+                return Err(format!("No accounts available with tier <= {}", tier_limit));
+            }
         }
 
         // ===== 【优化】根据订阅等级和剩余配额排序 =====

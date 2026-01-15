@@ -21,6 +21,23 @@ pub struct AppConfig {
     pub scheduled_warmup: ScheduledWarmupConfig, // [NEW] 定时预热配置
     #[serde(default)]
     pub quota_protection: QuotaProtectionConfig, // [NEW] 配额保护配置
+    #[serde(default)]
+    pub discord_bot: DiscordBotConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordBotConfig {
+    pub enabled: bool,
+    pub bot_token: String,
+}
+
+impl Default for DiscordBotConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: "".to_string(),
+        }
+    }
 }
 
 /// 定时预热配置
@@ -108,6 +125,7 @@ impl AppConfig {
             auto_launch: false,
             scheduled_warmup: ScheduledWarmupConfig::default(),
             quota_protection: QuotaProtectionConfig::default(),
+            discord_bot: DiscordBotConfig::default(),
         }
     }
 }

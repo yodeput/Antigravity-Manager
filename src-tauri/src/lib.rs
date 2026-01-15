@@ -38,6 +38,7 @@ pub fn run() {
                 });
         }))
         .manage(commands::proxy::ProxyServiceState::new())
+        .manage(commands::discord::DiscordServiceState::new())
         .setup(|app| {
             info!("Setup starting...");
             modules::tray::create_tray(app.handle())?;
@@ -60,6 +61,24 @@ pub fn run() {
                         } else {
                             info!("反代服务自动启动成功");
                         }
+                    }
+
+                    // 自动启动 Discord Bot
+                    if config.discord_bot.enabled && !config.discord_bot.bot_token.is_empty() {
+                         let discord_state = handle.state::<commands::discord::DiscordServiceState>();
+                         let proxy_state = handle.state::<commands::proxy::ProxyServiceState>();
+                         
+                         info!("Auto-starting Discord Bot...");
+                         if let Err(e) = commands::discord::start_discord_bot(
+                             handle.clone(),
+                             config.discord_bot,
+                             discord_state,
+                             proxy_state,
+                         ).await {
+                             error!("Failed to auto-start Discord Bot: {}", e);
+                         } else {
+                             info!("Discord Bot auto-started successfully");
+                         }
                     }
                 }
             });
@@ -152,6 +171,14 @@ pub fn run() {
             // 预热命令
             commands::warm_up_all_accounts,
             commands::warm_up_account,
+            // Discord Bot Commands
+            commands::discord::start_discord_bot,
+            commands::discord::stop_discord_bot,
+            commands::discord::get_discord_bot_status,
+            commands::discord::get_discord_logs,
+            commands::discord::clear_discord_logs,
+            // Log Command
+            commands::get_app_logs,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

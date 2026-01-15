@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Settings from './pages/Settings';
 import ApiProxy from './pages/ApiProxy';
+import DiscordBot from './pages/DiscordBot';
 import Monitor from './pages/Monitor';
 import ThemeManager from './components/common/ThemeManager';
 import { UpdateNotification } from './components/UpdateNotification';
@@ -31,6 +32,10 @@ const router = createBrowserRouter([
       {
         path: 'api-proxy',
         element: <ApiProxy />,
+      },
+      {
+        path: 'discord',
+        element: <DiscordBot />,
       },
       {
         path: 'monitor',

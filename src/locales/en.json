@@ -37,6 +37,7 @@
         "dashboard": "Dashboard",
         "accounts": "Accounts",
         "proxy": "API Proxy",
+        "discord": "Discord Bot",
         "settings": "Settings",
         "theme_to_dark": "Switch to Dark Mode",
         "theme_to_light": "Switch to Light Mode",
@@ -668,6 +669,24 @@
             "clear_title": "Clear Proxy Logs",
             "clear_msg": "Are you sure you want to clear all proxy logs? This action cannot be undone."
         }
+    },
+    "discord": {
+        "title": "Discord Bot",
+        "desc": "Manage the Discord bot integration. The bot can listen to channels and respond using your AI accounts.",
+        "config": "Configuration",
+        "enabled": "Enabled",
+        "token": "Bot Token",
+        "token_placeholder": "Paste your Discord Bot Token",
+        "token_tooltip": "Get this from the Discord Developer Portal",
+        "status": "Status",
+        "running": "Running",
+        "stopped": "Stopped",
+        "logs": "Console Logs",
+        "refresh_logs": "Refresh Logs",
+        "save": "Save & Restart",
+        "saved": "Configuration saved",
+        "start": "Start Bot",
+        "stop": "Stop Bot"
     },
     "update_notification": {
         "title": "New Version Available",

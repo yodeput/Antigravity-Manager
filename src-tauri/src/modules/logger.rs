@@ -182,3 +182,37 @@ pub fn log_warn(message: &str) {
 pub fn log_error(message: &str) {
     error!("{}", message);
 }
+
+/// 读取最近的日志内容
+pub fn get_recent_logs(lines: usize) -> Result<Vec<String>, String> {
+    let log_dir = get_log_dir()?;
+    // find the most recent log file (app.log or app.log.YYYY-MM-DD)
+    // Actually tracing_appender::rolling::daily creates files like app.log.YYYY-MM-DD
+    // and symlinks (or just writes to) current one?
+    // The documentation says: "The file name will be formatted as <filename>.<date>".
+    // It does NOT create a symlink named `app.log` by default unless configured.
+    // However, the code uses `tracing_appender::rolling::daily(log_dir, "app.log")`.
+    // This typically produces `app.log.YYYY-MM-DD`.
+    
+    // Let's look for the latest file starting with "app.log"
+    let entries = fs::read_dir(&log_dir).map_err(|e| e.to_string())?;
+    
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.file_name().unwrap_or_default().to_string_lossy().starts_with("app.log"))
+        .collect();
+        
+    files.sort(); // Date based naming sorts correctly
+    
+    let latest_log = files.last().ok_or("No log files found")?;
+    
+    let content = fs::read_to_string(latest_log).map_err(|e| e.to_string())?;
+    let all_lines: Vec<&str> = content.lines().collect();
+    
+    if all_lines.len() > lines {
+        Ok(all_lines[all_lines.len() - lines..].iter().map(|s| s.to_string()).collect())
+    } else {
+        Ok(all_lines.iter().map(|s| s.to_string()).collect())
+    }
+}
