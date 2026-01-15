@@ -292,20 +292,24 @@ pub async fn event_handler(
                     }
                 }
                 
-                messages.push(json!({ 
-                    "role": msg.role, 
-                    "name": msg.author_name.clone().unwrap_or_default(),
-                    "content": content_parts 
-                }));
+                // For multimodal, prepend author name to text content
+                if let Some(author) = &msg.author_name {
+                    if !author.is_empty() {
+                        if let Some(first) = content_parts.get_mut(0) {
+                            if let Some(text) = first.get("text").and_then(|t| t.as_str()) {
+                                *first = json!({ "type": "text", "text": format!("[{}]: {}", author, text) });
+                            }
+                        }
+                    }
+                }
+                messages.push(json!({ "role": msg.role, "content": content_parts }));
                 
             } else {
-                // Include author name in the message for user identification
+                // Embed author name directly into content for Gemini compatibility
                 if msg.role == "user" && msg.author_name.is_some() {
-                    messages.push(json!({ 
-                        "role": msg.role, 
-                        "name": msg.author_name.clone().unwrap_or_default(),
-                        "content": msg.content 
-                    }));
+                    let author = msg.author_name.as_ref().unwrap();
+                    let content_with_author = format!("[{}]: {}", author, msg.content);
+                    messages.push(json!({ "role": msg.role, "content": content_with_author }));
                 } else {
                     messages.push(json!({ "role": msg.role, "content": msg.content }));
                 }
