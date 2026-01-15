@@ -127,14 +127,14 @@ pub async fn event_handler(
             new_message.author.global_name.clone().unwrap_or(new_message.author.name.clone())
         };
 
-        // 4. Save User Message with author attribution (so AI knows who sent it)
-        let attributed_content = format!("[{}]: {}", author_display_name, final_user_content);
+        // 4. Save User Message with author name (no prefix needed, using name field)
         db::save_message(
             &guild_id,
             &channel_id,
             &new_message.author.id.to_string(),
+            &author_display_name,  // NEW: author_name parameter
             "user",
-            &attributed_content,
+            &final_user_content,   // No longer needs [Author]: prefix
         )?;
 
         // 4. Get Guild Config (Model, System Prompt)
@@ -292,10 +292,23 @@ pub async fn event_handler(
                     }
                 }
                 
-                messages.push(json!({ "role": msg.role, "content": content_parts }));
+                messages.push(json!({ 
+                    "role": msg.role, 
+                    "name": msg.author_name.clone().unwrap_or_default(),
+                    "content": content_parts 
+                }));
                 
             } else {
-                messages.push(json!({ "role": msg.role, "content": msg.content }));
+                // Include author name in the message for user identification
+                if msg.role == "user" && msg.author_name.is_some() {
+                    messages.push(json!({ 
+                        "role": msg.role, 
+                        "name": msg.author_name.clone().unwrap_or_default(),
+                        "content": msg.content 
+                    }));
+                } else {
+                    messages.push(json!({ "role": msg.role, "content": msg.content }));
+                }
             }
         }
 
@@ -584,6 +597,7 @@ pub async fn event_handler(
                                 &guild_id,
                                 &channel_id,
                                 &ctx.cache.current_user().id.to_string(),
+                                "",  // No author_name for assistant messages
                                 "assistant",
                                 &saved_content,
                             )?;

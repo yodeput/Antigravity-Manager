@@ -60,12 +60,16 @@ pub fn init_db() -> Result<(), String> {
             guild_id TEXT,
             channel_id TEXT,
             user_id TEXT,
+            author_name TEXT,
             role TEXT,
             content TEXT,
             created_at INTEGER
         )",
         [],
     ).map_err(|e| e.to_string())?;
+
+    // Migration for existing tables
+    let _ = conn.execute("ALTER TABLE messages ADD COLUMN author_name TEXT", []);;
 
     Ok(())
 }
@@ -159,13 +163,13 @@ pub fn update_channel_config(config: &ChannelConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_message(guild_id: &str, channel_id: &str, user_id: &str, role: &str, content: &str) -> Result<(), String> {
+pub fn save_message(guild_id: &str, channel_id: &str, user_id: &str, author_name: &str, role: &str, content: &str) -> Result<(), String> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
     
     conn.execute(
-        "INSERT INTO messages (guild_id, channel_id, user_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![guild_id, channel_id, user_id, role, content, chrono::Utc::now().timestamp()],
+        "INSERT INTO messages (guild_id, channel_id, user_id, author_name, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![guild_id, channel_id, user_id, author_name, role, content, chrono::Utc::now().timestamp()],
     ).map_err(|e| e.to_string())?;
     
     Ok(())
@@ -173,6 +177,7 @@ pub fn save_message(guild_id: &str, channel_id: &str, user_id: &str, role: &str,
 
 pub struct ChatMessage {
     pub role: String,
+    pub author_name: Option<String>,
     pub content: String,
 }
 
@@ -183,13 +188,13 @@ pub fn get_chat_history(channel_id: &str, user_id: Option<&str>, limit: usize) -
     let history = if let Some(uid) = user_id {
         // User mode
         let mut stmt = conn.prepare(
-            "SELECT role, content FROM messages 
+            "SELECT role, author_name, content FROM messages 
              WHERE channel_id = ? AND (user_id = ? OR role = 'assistant') 
              ORDER BY created_at DESC LIMIT ?"
         ).map_err(|e| e.to_string())?;
         
         let rows = stmt.query_map(params![channel_id, uid, limit], |row| {
-            Ok(ChatMessage { role: row.get(0)?, content: row.get(1)? })
+            Ok(ChatMessage { role: row.get(0)?, author_name: row.get(1)?, content: row.get(2)? })
         }).map_err(|e| e.to_string())?;
 
         let mut items = Vec::new();
@@ -200,13 +205,13 @@ pub fn get_chat_history(channel_id: &str, user_id: Option<&str>, limit: usize) -
     } else {
         // Shared mode
         let mut stmt = conn.prepare(
-            "SELECT role, content FROM messages 
+            "SELECT role, author_name, content FROM messages 
              WHERE channel_id = ? 
              ORDER BY created_at DESC LIMIT ?"
         ).map_err(|e| e.to_string())?;
 
         let rows = stmt.query_map(params![channel_id, limit], |row| {
-            Ok(ChatMessage { role: row.get(0)?, content: row.get(1)? })
+            Ok(ChatMessage { role: row.get(0)?, author_name: row.get(1)?, content: row.get(2)? })
         }).map_err(|e| e.to_string())?;
 
         let mut items = Vec::new();
