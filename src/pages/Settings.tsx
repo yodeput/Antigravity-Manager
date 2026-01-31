@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Github, User, MessageCircle, ExternalLink, RefreshCw, Sparkles, Heart, Coffee } from 'lucide-react';
+import { Save, Github, User, MessageCircle, ExternalLink, RefreshCw, Sparkles, Heart, Coffee, Bot, Eye, EyeOff, Play, Square, Terminal, Trash2 } from 'lucide-react';
 import { request as invoke } from '../utils/request';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useConfigStore } from '../stores/useConfigStore';
@@ -9,6 +9,7 @@ import { showToast } from '../components/common/ToastContainer';
 import QuotaProtection from '../components/settings/QuotaProtection';
 import SmartWarmup from '../components/settings/SmartWarmup';
 import PinnedQuotaModels from '../components/settings/PinnedQuotaModels';
+import { listen } from '@tauri-apps/api/event';
 
 import { useTranslation } from 'react-i18next';
 import { isTauri } from '../utils/env';
@@ -17,7 +18,7 @@ import { isTauri } from '../utils/env';
 function Settings() {
     const { t, i18n } = useTranslation();
     const { config, loadConfig, saveConfig, updateLanguage, updateTheme } = useConfigStore();
-    const [activeTab, setActiveTab] = useState<'general' | 'account' | 'proxy' | 'advanced' | 'about'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'account' | 'proxy' | 'discord' | 'advanced' | 'about'>('general');
     const [formData, setFormData] = useState<AppConfig>({
         language: 'zh',
         theme: 'system',
@@ -79,6 +80,18 @@ function Settings() {
         downloadUrl: string;
     } | null>(null);
 
+    // Discord state
+    const [discordToken, setDiscordToken] = useState('');
+    const [showDiscordToken, setShowDiscordToken] = useState(false);
+    const [spotifyClientId, setSpotifyClientId] = useState('');
+    const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
+    const [showSpotifySecret, setShowSpotifySecret] = useState(false);
+    const [discordBotStatus, setDiscordBotStatus] = useState<{ running: boolean; enabled: boolean }>({ running: false, enabled: false });
+    const [discordLogs, setDiscordLogs] = useState<{ timestamp: string; level: string; message: string }[]>([]);
+    const [showDiscordConsole, setShowDiscordConsole] = useState(false);
+    const [discordLoading, setDiscordLoading] = useState(false);
+    const [discordStats, setDiscordStats] = useState<{ guilds: any[]; total_channels: number; total_messages: number } | null>(null);
+
 
     useEffect(() => {
         loadConfig();
@@ -114,6 +127,85 @@ function Settings() {
         }
     }, [config]);
 
+    // Discord config loading
+    useEffect(() => {
+        if (config?.discord_bot) {
+            setDiscordToken(config.discord_bot.bot_token || '');
+            setSpotifyClientId(config.discord_bot.spotify_client_id || '');
+            setSpotifyClientSecret(config.discord_bot.spotify_client_secret || '');
+        }
+        fetchDiscordStatus();
+        fetchDiscordStats();
+        fetchDiscordLogs();
+
+        // Listen for real-time log updates
+        const unlistenPromise = listen('discord-log', (event: any) => {
+            setDiscordLogs(prev => [...prev, event.payload]);
+        });
+
+        return () => {
+            unlistenPromise.then(fn => fn());
+        };
+    }, [config]);
+
+    const fetchDiscordStatus = async () => {
+        try {
+            const status = await invoke<{ running: boolean; enabled: boolean }>('get_discord_bot_status');
+            setDiscordBotStatus(status);
+        } catch (e) {
+            console.error('Failed to get Discord status:', e);
+        }
+    };
+
+    const fetchDiscordLogs = async () => {
+        try {
+            const logs = await invoke<{ timestamp: string; level: string; message: string }[]>('get_discord_logs');
+            setDiscordLogs(logs);
+        } catch (e) {
+            console.error('Failed to get Discord logs:', e);
+        }
+    };
+
+    const fetchDiscordStats = async () => {
+        try {
+            const stats = await invoke<{ guilds: any[]; total_channels: number; total_messages: number }>('get_discord_stats');
+            setDiscordStats(stats);
+        } catch (e) {
+            console.error('Failed to get Discord stats:', e);
+        }
+    };
+
+    const toggleDiscordBot = async () => {
+        setDiscordLoading(true);
+        try {
+            if (discordBotStatus.running) {
+                await invoke('stop_discord_bot');
+            } else {
+                if (!discordToken) {
+                    showToast('Please enter Discord bot token first', 'error');
+                    setDiscordLoading(false);
+                    return;
+                }
+                await invoke('start_discord_bot', { config: { enabled: true, bot_token: discordToken } });
+            }
+            await fetchDiscordStatus();
+            await fetchDiscordStats();
+        } catch (e) {
+            showToast(`Error: ${e}`, 'error');
+        } finally {
+            setDiscordLoading(false);
+        }
+    };
+
+    const clearDiscordLogs = async () => {
+        try {
+            await invoke('clear_discord_logs');
+            setDiscordLogs([]);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     const handleSave = async () => {
         try {
             // 校验：如果启用了上游代理但没有填写地址，给出提示
@@ -124,8 +216,20 @@ function Settings() {
                 return;
             }
 
+            // Save Discord config along with other settings
+            const configToSave = {
+                ...formData,
+                auto_refresh: true,
+                discord_bot: {
+                    enabled: true,
+                    bot_token: discordToken,
+                    spotify_client_id: spotifyClientId,
+                    spotify_client_secret: spotifyClientSecret,
+                }
+            };
+
             // 强制开启后台自动刷新，确保联动逻辑生效
-            await saveConfig({ ...formData, auto_refresh: true });
+            await saveConfig(configToSave);
             showToast(t('common.saved'), 'success');
 
             // 如果修改了代理配置，提示用户需要重启
@@ -324,6 +428,16 @@ function Settings() {
                             onClick={() => setActiveTab('proxy')}
                         >
                             {t('settings.tabs.proxy')}
+                        </button>
+                        <button
+                            className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'discord'
+                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                                }`}
+                            onClick={() => setActiveTab('discord')}
+                        >
+                            <Bot size={16} className="inline-block mr-1" />
+                            Discord
                         </button>
                         <button
                             className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'advanced'
@@ -941,6 +1055,241 @@ function Settings() {
                             </div>
                         </div>
                     )}
+
+                    {/* Discord 设置 */}
+                    {activeTab === 'discord' && (
+                        <div className="space-y-6 animate-in fade-in duration-500">
+                            {/* Header with status and controls */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg">
+                                        <Bot className="w-8 h-8 text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-gray-900 dark:text-base-content">Discord Bot</h2>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">AI-powered chat assistant for Discord</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {/* Status Badge */}
+                                    <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+                                        discordBotStatus.running
+                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
+                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                    }`}>
+                                        <div className={`w-2.5 h-2.5 rounded-full ${discordBotStatus.running ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                                        {discordBotStatus.running ? 'Online' : 'Offline'}
+                                    </div>
+
+                                    {/* Console Button */}
+                                    <button
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 border bg-white dark:bg-base-100 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-base-300 hover:bg-gray-50 dark:hover:bg-base-200"
+                                        onClick={() => setShowDiscordConsole(true)}
+                                        title="Open Console"
+                                    >
+                                        <Terminal size={14} />
+                                    </button>
+
+                                    {/* Start/Stop Button */}
+                                    <button
+                                        className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 ${
+                                            discordBotStatus.running
+                                                ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-800'
+                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-500/30'
+                                        } ${discordLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        onClick={toggleDiscordBot}
+                                        disabled={discordLoading}
+                                    >
+                                        {discordLoading ? (
+                                            <span className="loading loading-spinner loading-xs"></span>
+                                        ) : discordBotStatus.running ? (
+                                            <>
+                                                <Square size={14} fill="currentColor" />
+                                                Stop Bot
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Play size={14} fill="currentColor" />
+                                                Start Bot
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Quick Stats */}
+                            {discordStats && (
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                                                <Bot size={18} className="text-indigo-600 dark:text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-bold text-gray-900 dark:text-white">{discordStats.guilds.length}</p>
+                                                <p className="text-xs text-gray-500">Servers</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                                <MessageCircle size={18} className="text-green-600 dark:text-green-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-bold text-gray-900 dark:text-white">{discordStats.total_channels}</p>
+                                                <p className="text-xs text-gray-500">Channels</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                                                <MessageCircle size={18} className="text-purple-600 dark:text-purple-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-bold text-gray-900 dark:text-white">{discordStats.total_messages}</p>
+                                                <p className="text-xs text-gray-500">Messages</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Configuration Section */}
+                            <div className="bg-white dark:bg-base-100 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-base-200 space-y-6">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-base-content">Configuration</h3>
+
+                                {/* Discord Bot Token */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-900 dark:text-base-content mb-2">
+                                        Discord Bot Token
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showDiscordToken ? 'text' : 'password'}
+                                            value={discordToken}
+                                            onChange={(e) => setDiscordToken(e.target.value)}
+                                            placeholder="Enter your Discord bot token..."
+                                            className="w-full px-4 py-3 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
+                                        />
+                                        <button
+                                            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                            onClick={() => setShowDiscordToken(!showDiscordToken)}
+                                        >
+                                            {showDiscordToken ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                        Get your bot token from the{' '}
+                                        <a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">
+                                            Discord Developer Portal
+                                        </a>
+                                    </p>
+                                </div>
+
+                                {/* Spotify Configuration */}
+                                <div className="pt-4 border-t border-gray-200 dark:border-base-300">
+                                    <h4 className="text-sm font-medium text-gray-900 dark:text-base-content mb-3 flex items-center gap-2">
+                                        🎵 Spotify Integration
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spotify Client ID</label>
+                                            <input
+                                                type="text"
+                                                value={spotifyClientId}
+                                                onChange={(e) => setSpotifyClientId(e.target.value)}
+                                                placeholder="Enter Spotify Client ID"
+                                                className="w-full px-3 py-2 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spotify Client Secret</label>
+                                            <input
+                                                type={showSpotifySecret ? 'text' : 'password'}
+                                                value={spotifyClientSecret}
+                                                onChange={(e) => setSpotifyClientSecret(e.target.value)}
+                                                placeholder="Enter Spotify Client Secret"
+                                                className="w-full px-3 py-2 pr-10 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
+                                            />
+                                            <button
+                                                className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                                onClick={() => setShowSpotifySecret(!showSpotifySecret)}
+                                            >
+                                                {showSpotifySecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                        Get credentials from the{' '}
+                                        <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">
+                                            Spotify Developer Dashboard
+                                        </a>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Console Modal */}
+                            {showDiscordConsole && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDiscordConsole(false)}>
+                                    <div className="w-full max-w-4xl h-[80vh] bg-[#1e1e2e] rounded-xl overflow-hidden flex flex-col shadow-2xl border border-gray-800 m-4" onClick={(e) => e.stopPropagation()}>
+                                        {/* Console Header */}
+                                        <div className="flex items-center justify-between px-4 py-3 bg-[#181825] border-b border-gray-800">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex gap-1.5">
+                                                    <button className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors" onClick={() => setShowDiscordConsole(false)} />
+                                                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                                </div>
+                                                <span className="text-sm font-medium text-gray-400">Discord Bot Console</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    className="text-gray-500 hover:text-gray-300 transition-colors"
+                                                    onClick={clearDiscordLogs}
+                                                    title="Clear logs"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                                <button
+                                                    className="text-gray-500 hover:text-gray-300 transition-colors"
+                                                    onClick={() => setShowDiscordConsole(false)}
+                                                    title="Close"
+                                                >
+                                                    <span className="text-lg">×</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Console Content */}
+                                        <div className="flex-1 overflow-auto p-4 font-mono text-sm">
+                                            {discordLogs.length === 0 ? (
+                                                <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                                                    <Bot size={48} className="mb-4 opacity-30" />
+                                                    <p className="text-center">No logs yet.<br /><span className="text-xs">Start the bot to see activity here.</span></p>
+                                                </div>
+                                            ) : (
+                                                discordLogs.map((entry, i) => (
+                                                    <div key={i} className={`py-0.5 ${
+                                                        entry.level === 'error' ? 'text-red-400' :
+                                                        entry.level === 'warn' ? 'text-yellow-400' :
+                                                        entry.level === 'success' ? 'text-green-400' :
+                                                        'text-gray-300'
+                                                    } hover:bg-white/5 px-2 -mx-2 rounded`}>
+                                                        <span className="text-gray-500 mr-3">[{entry.timestamp}]</span>
+                                                        <span>{entry.message}</span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {activeTab === 'about' && (
                         <div className="flex flex-col h-full animate-in fade-in duration-500">
                             <div className="flex-1 flex flex-col justify-center items-center space-y-8">

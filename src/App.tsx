@@ -74,7 +74,6 @@ function App() {
   useEffect(() => {
     if (config?.language) {
       i18n.changeLanguage(config.language);
-<<<<<<< HEAD
       // Support RTL
       if (config.language === 'ar') {
         document.documentElement.dir = 'rtl';
