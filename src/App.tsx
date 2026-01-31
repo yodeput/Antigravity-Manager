@@ -8,6 +8,7 @@ import ApiProxy from './pages/ApiProxy';
 import Monitor from './pages/Monitor';
 import TokenStats from './pages/TokenStats';
 import Security from './pages/Security';
+import DiscordBot from './pages/DiscordBot';
 import ThemeManager from './components/common/ThemeManager';
 import { UpdateNotification } from './components/UpdateNotification';
 import { useEffect, useState } from 'react';
@@ -35,6 +36,10 @@ const router = createBrowserRouter([
       {
         path: 'api-proxy',
         element: <ApiProxy />,
+      },
+      {
+        path: 'discord',
+        element: <DiscordBot />,
       },
       {
         path: 'monitor',
@@ -69,6 +74,7 @@ function App() {
   useEffect(() => {
     if (config?.language) {
       i18n.changeLanguage(config.language);
+<<<<<<< HEAD
       // Support RTL
       if (config.language === 'ar') {
         document.documentElement.dir = 'rtl';
